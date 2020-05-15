@@ -122,7 +122,11 @@ def scrape_company_files(company_id):
         else:
             d = current_metadata
         d.to_csv(table_file_path, index = None, header=True, encoding='utf-8')
-   
+
+
+def get_last_id_in_company_db():
+    d = pd.read_csv(data_folder + "files_metadata" + ".csv")
+    return d['company_id'].values[len(d.index)-1]
 '''
 url = u'https://www.sec.gov/Archives/edgar/data/1041803/000104180308000008/0001041803-08-000008-index.htm'
 html_doc = requests.get(url, timeout = 5).content
@@ -130,7 +134,25 @@ open('rancia.html', 'wb').write(html_doc)
 get_single_file_path(html_doc, True)
 '''
 
-company_id = 1041803
-scrape_company_files(company_id)
+# company_id = 1041803
+# 
+
+d = pd.read_csv("misc/company_data.csv")
+company_id_list = list(set(d['f_cik'].values))
+
+i = 1
+found_last = False
+last_id_in_db = get_last_id_in_company_db()
+print "Last ID is: " + str(last_id_in_db)
+for company_id in company_id_list:
+    if found_last:
+        print " ("+ str(i) + "/"+ str(len(company_id_list))  + ")--------------------- Searching id=" + str(company_id)
+        scrape_company_files(company_id)
+        i += 1 
+    else:
+        found_last = str(company_id) == str(last_id_in_db)
+        
+
+
 
 
