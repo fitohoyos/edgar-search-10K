@@ -1,15 +1,17 @@
 import requests
 import re
 import os
+import csv
 import pandas as pd
+from urllib.parse import urlparse
 from bs4 import BeautifulSoup
 # https://www.sec.gov/cgi-bin/browse-edgar?CIK=1084765&owner=exclude&action=getcompany
-from myConfigs import get_company_url_prefix, sec, data_folder
+from myConfigs import get_company_url_prefix, sec, data_folder, signatures_folder
 
 def get_company_source_page_URLs(company_id) :
     company_url = get_company_url_prefix + str(company_id)
 
-    print "Company URL = " + company_url
+    print("Company URL = " + company_url)
     company_file_url_list = []
     html_doc = requests.get(company_url, timeout = 5).content
     [initial_company_urls, raw_results] = get_single_file_path(html_doc, is_exclusive_search=True)
@@ -31,7 +33,6 @@ def get_company_source_page_URLs(company_id) :
 
 def get_single_file_path(html_doc, is_exclusive_search):
     files_page_content  = BeautifulSoup(html_doc, "html.parser")
-    # print files_page_content
     if is_exclusive_search:
         all_tds = files_page_content.find_all('td', text="10-K")
     else:
@@ -78,12 +79,10 @@ def get_10K_dates(html_doc):
 def get_10K_metadata(html_doc):
     metadata = get_10K_dates(html_doc)
     single_file_path = get_single_file_path(html_doc, is_exclusive_search=False)
-    # print single_file_path
     if len(single_file_path[0]) > 0:
         metadata['File URL'] = [sec + single_file_path[0][0]]
     else:
         metadata['File URL'] = [""]
-    # print metadata
     return pd.DataFrame(metadata)
 
 def scrape_company_files(company_id):
@@ -91,9 +90,7 @@ def scrape_company_files(company_id):
 
     i = 0
     for path in company_file_path_list:
-        print
-        print "Getting info from " + path
-        print
+        print("Getting info from " + path)
         files_page_url = sec + path
 
         html_doc = requests.get(files_page_url, timeout = 5).content
@@ -115,10 +112,10 @@ def scrape_company_files(company_id):
 
             for index, row in current_metadata.iterrows():
                 if not row['File URL'] in d['File URL'].values:
-                    print 'New file added to database'
+                    print('New file added to database')
                     d.loc[len(d.index)] = row
                 else:
-                    print 'File metadata was previously in database'
+                    print('File metadata was previously in database')
         else:
             d = current_metadata
         d.to_csv(table_file_path, index = None, header=True, encoding='utf-8')
@@ -137,21 +134,65 @@ get_single_file_path(html_doc, True)
 # company_id = 1041803
 # 
 
-d = pd.read_csv("misc/company_data.csv")
-company_id_list = list(set(d['f_cik'].values))
+def get_all_company_data(company_data_file = "misc/company_data.csv"):
+    d = pd.read_csv(company_data_file)
+    company_id_list = list(set(d['f_cik'].values))
 
-i = 1
-found_last = False
-last_id_in_db = get_last_id_in_company_db()
-print "Last ID is: " + str(last_id_in_db)
-for company_id in company_id_list:
-    if found_last:
-        print " ("+ str(i) + "/"+ str(len(company_id_list))  + ")--------------------- Searching id=" + str(company_id)
-        scrape_company_files(company_id)
-        i += 1 
-    else:
-        found_last = str(company_id) == str(last_id_in_db)
+    i = 1
+    found_last = False
+    last_id_in_db = get_last_id_in_company_db()
+    print("Last ID is: " + str(last_id_in_db))
+    for company_id in company_id_list:
+        if found_last:
+            print(" ("+ str(i) + "/"+ str(len(company_id_list))  + ")--------------------- Searching id=" + str(company_id))
+            scrape_company_files(company_id)
+            i += 1 
+        else:
+            found_last = str(company_id) == str(last_id_in_db)
+
+def get_signatures(url, company_id, file_name):
+    # url_parsed = urlparse(url)
+    # file_name_with_ext = os.path. basename(url_parsed.path)
+    # file_name = os.path.splitext(file_name_with_ext)[0]
+
+    html_doc = requests.get(url).content
+    open("k_10.html", 'wb').write(html_doc)
+    k_10_content = BeautifulSoup(html_doc, "html.parser")    
+    all_tables = k_10_content.find_all('table')
+    i = 0
+    for table in all_tables:
+        if table is not None:
+            if "signature" in table.get_text().lower() and "title" in table.get_text().lower():
+                #if "title" in table.get_text().lower():
+                #    print(table)
+                #    break
+                if not os.path.isdir(signatures_folder):
+                    os.mkdir(signatures_folder)
+                i += 1
+                company_folder = signatures_folder + str(company_id) + "/"
+                if not os.path.isdir(company_folder):
+                    os.mkdir(company_folder)
+                save_file_path = company_folder + file_name + "_" +str(i) + ".csv"
+                with open(save_file_path, "w") as f:
+                    wr = csv.writer(f)
+                    wr.writerows([[td.p.get_text() for td in row.find_all("td") if td.p is not None] for row in table.select("tr + tr")])
+    print("Found " + str(i) + " signature tables for company " + str(company_id))
+d = pd.read_csv("data/files_metadata.csv")
+# 2133
+# 11238 --> id: 1589150
+
+for index, row in d.iterrows():
+    k_10_url = d["File URL"][index]
+    print(k_10_url)
+    company_id = d["company_id"][index]
+    file_name = str(d["Period of Report"][index])
+
+    get_signatures(k_10_url, company_id, file_name)
+
         
+        
+
+
 
 
 
