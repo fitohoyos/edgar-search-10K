@@ -165,8 +165,8 @@ def table_tag_to_list_of_lists(table):
     #print(table)
     parsed_rows = [[td.get_text().strip().encode('ascii', 'ignore').decode("utf-8") for td in row.find_all("td") if td is not None] for row in table.select("tr + tr")]
     parsed_rows = remove_empty_rows_from_list_of_lists(parsed_rows)
-    #print(parsed_rows)
-    #print('.'*15)
+    print(parsed_rows)
+    print('3'*15)
     _max = max([ len(row) for row in parsed_rows])
     parsed_rows = [[ row.append(['']) for row in parsed_rows  ] for i in range(0, _max - len(row))]
 
@@ -253,25 +253,27 @@ def get_signatures(url, company_id, file_name):
             
             if signature_tags is None or len(signature_tags) == 0:                
                 signature_tags = k_10_content.find_all('div', text=re.compile('SIGNATURE', re.DOTALL))
-            iii = 0
-            # print(signature_tags)
-            for signature_tag in signature_tags:
-                # print(str(iii) + '-' * 10)
-                while True:
-                    iii += 1
-                    # print(str(iii))
-                    if 'pursuant' in signature_tag.get_text().lower():
-                        if 'contents' in signature_tag.get_text().lower():
-                            continue
-                        else:
-                            table_tags = signature_tag.find_all('table')
-                            if table_tags is not None:
-                                all_tables = table_tags
-                                print(all_tables)
-                                if len(all_tables) > 0:
-                                    break
-                    signature_tag = signature_tag.parent     
-                print('The end ' + '-' * 10)
+            if signature_tags is not None:
+                iii = 0
+                # print(signature_tags)
+                for signature_tag in signature_tags:
+                    # print(str(iii) + '-' * 10)
+                    while iii<5:
+                        print(str(iii))
+                        if 'pursuant' in signature_tag.get_text().lower():
+                            if 'contents' in signature_tag.get_text().lower():
+                                iii += 1
+                                continue
+                            else:
+                                table_tags = signature_tag.find_all('table')
+                                if table_tags is not None:
+                                    all_tables = table_tags
+                                    print(all_tables)
+                                    if len(all_tables) > 0:
+                                        break
+                        signature_tag = signature_tag.parent 
+                        iii += 1   
+                    print('The end ' + '-' * 10)
         if intent == 4:
             for table in k_10_content.find_all('table'):
                 if table is not None:
@@ -286,8 +288,9 @@ def get_signatures(url, company_id, file_name):
         # with all_tables[1] as table:
         for table in all_tables:
             if table is not None and len(table)>0:      
-                print(table)       
-                print(type(table))
+                #print(table)       
+                #print(type(table))
+                #exit()
                 print('0'*20)
                 if not '.txt' in url:
                     signature_table = table_tag_to_list_of_lists(table)
