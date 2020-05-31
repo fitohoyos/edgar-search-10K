@@ -3,6 +3,7 @@ import re
 import os
 import csv
 import pandas as pd
+from datetime import datetime as dt
 from urllib.parse import urlparse
 from bs4 import BeautifulSoup
 # https://www.sec.gov/cgi-bin/browse-edgar?CIK=1084765&owner=exclude&action=getcompany
@@ -156,26 +157,73 @@ def remove_empty_rows_from_list_of_lists(data):
 def traspose_list_of_lists(l):
     return list(map(list, zip(*l)))
 
+def even_row_lengths(parsed_rows):
+    #vprint(parsed_rows)
+    _max = max([ len(row) for row in parsed_rows])
+
+    #print('max: '+ str(_max))
+    new_rows = []
+    for row in parsed_rows:
+        new_row = list(row)
+        #print("cur"+ str(len(row)))
+        for i in range(0, _max - len(row)):
+            new_row.append('')
+        #print("Current:" + str(len(new_row)))
+        new_rows.append(new_row)
+    #print(new_rows)
+    #exit()
+    return new_rows
+
 def table_tag_to_list_of_lists(table):
     #for row in table.select('tr + tr'):
     #    for td in row.find_all('td'):
     #        print(td.get_text().strip().encode('ascii', 'ignore').decode("utf-8"))
     #exit()
     #print('.'*45)
-    #print(table)
-    parsed_rows = [[td.get_text().strip().encode('ascii', 'ignore').decode("utf-8") for td in row.find_all("td") if td is not None] for row in table.select("tr + tr")]
-    parsed_rows = remove_empty_rows_from_list_of_lists(parsed_rows)
-    print(parsed_rows)
-    print('3'*15)
-    _max = max([ len(row) for row in parsed_rows])
-    parsed_rows = [[ row.append(['']) for row in parsed_rows  ] for i in range(0, _max - len(row))]
+    # print(table)
 
+    parsed_rows = [[td.get_text().strip().encode('ascii', 'ignore').decode("utf-8") for td in row.find_all("td") if td is not None] for row in table.select("tr + tr")]
+
+    #i = 0
+    #for row in table.select('tr + tr'):
+    #    print(row)
+    #    print(str(i))
+
+    # print(parsed_rows)
+    # print('2'*15)
+
+    if len(parsed_rows)==0:
+        return []
+    
+    # print('is not empty!!!')
+    for row in parsed_rows:
+        for cell in row:
+            if 'balance sheet' in str(cell).lower():
+                return []
+    
+    # print(parsed_rows)
+    parsed_rows = remove_empty_rows_from_list_of_lists(parsed_rows)
+
+    if len(parsed_rows)==0:
+        return []
+    
+    #print('3'*15)
+    #print(parsed_rows)
+    try:    
+        parsed_rows = even_row_lengths(parsed_rows)
+    except:
+        print(parsed_rows)
+        exit()
+    #print('4'*15)
+    #print(parsed_rows)
+    #exit()
     #print(parsed_rows)
     #print('.'*15)
     parsed_rows = traspose_list_of_lists(parsed_rows)
     #print('.'*15)
     #print(parsed_rows)
     parsed_rows = remove_empty_rows_from_list_of_lists(parsed_rows)
+
     return traspose_list_of_lists(parsed_rows)
 
 def update_scrape(row, success, doable=True, scraped=True):
@@ -199,6 +247,8 @@ def update_scrape(row, success, doable=True, scraped=True):
     d.to_csv(file_full_path, index = None, header=True, encoding='utf-8')
     print("saved in " + file_full_path)
 
+def intent_zero_logic(table):
+    return ('Executive Officer' in table.get_text() or "executive officer" in table.get_text().lower() or  ("signat" in table.get_text().lower() and ("name:" in table.get_text().lower() or "title" in table.get_text().lower() or "executive officer" in table.get_text().lower()))) and ('Financial Statement' not in table.get_text())  and ( not re.match('\W*\s*\d*\.\d*', table.get_text())) and (not 'balance sheet' in table.get_text().lower())
 
 def get_signatures(url, company_id, file_name):
     html_doc = requests.get(url).content
@@ -211,14 +261,16 @@ def get_signatures(url, company_id, file_name):
     while signature_table_count == 0:
         all_tables = []
         print('intent #' + str(intent))
-        if intent == 0: 
+        if intent == 1: # zero!
             tables = k_10_content.find_all('table')
             a=0
             for index, table in enumerate(tables, start=0):
                 if table is not None:
-                    if "signature" in table.get_text().lower() and "title" in table.get_text().lower():
-                        all_tables.append(table)                      
-        if intent == 1:
+                    if intent_zero_logic(table):
+                        all_tables.append(table)
+            
+            print(len(all_tables))
+        if intent == 0:
             all_tables = []
             search_terms = ["Pursuant to the requirements of Section 13 ", 'SIGNATURES']
             tag_types = ['div', 'p', 'a', 'P', 'A']
@@ -274,14 +326,6 @@ def get_signatures(url, company_id, file_name):
                         signature_tag = signature_tag.parent 
                         iii += 1   
                     print('The end ' + '-' * 10)
-        if intent == 4:
-            for table in k_10_content.find_all('table'):
-                if table is not None:
-                    if 'Executive Officer' in table.get_text():
-                        print('Found CEO')
-                        #print(table)
-                        #exit()
-                        all_tables.append(table)
                 
         if intent > 10:
             break
@@ -291,7 +335,7 @@ def get_signatures(url, company_id, file_name):
                 #print(table)       
                 #print(type(table))
                 #exit()
-                print('0'*20)
+                # print('0'*20)
                 if not '.txt' in url:
                     signature_table = table_tag_to_list_of_lists(table)
                 else:
@@ -339,6 +383,14 @@ d = pd.read_csv("data/files_metadata.csv")
 
 for index, row in d.iterrows():
     k_10_url = d["FileURL"][index]
+    
+    period_of_report = dt.strptime(str(d['Period of Report'][index]), "%Y-%m-%d")
+    earlies_date = dt.strptime('2018-01-01', "%Y-%m-%d")
+
+    if period_of_report < earlies_date:
+        print('date of report ' + str(period_of_report) + ' is before ' + str(earlies_date) + ' . Skipping')
+        continue
+    
     print(k_10_url)
     company_id = d["company_id"][index]
     file_name = str(d["Period of Report"][index])
@@ -350,8 +402,9 @@ for index, row in d.iterrows():
             signature_tables = get_signatures(k_10_url, company_id, file_name)
             print('# of tables is ' + str(len(signature_tables)))
             if len(signature_tables) != 0:
+                # exit()
                 update_scrape(row, success = True)
-                exit()
+                # exit()
             else:
                 update_scrape(row, success = False)
     else:
